@@ -242,6 +242,166 @@ window.deleteThread = async function(id) {
 };
 
 loadThreads();
+<script>
+const SB_URL = new URL("https://" + "unejwdoylcvtwyhjnltp" + ".supabase.co").origin;
+const SB_KEY = "sb_publishable_zxEzT7COe0uFc-WNIY0Qxg_Fmi5x-tO";
+const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" };
+
+let isAdmin = localStorage.getItem("rmrp_forum_admin") === "1";
+let currentCat = "Все";
+if (isAdmin) document.getElementById("role-status").innerHTML = 'Режим: <b style="color:#f87171;">Администратор</b>';
+
+window.adminLogin = async function() {
+    if (isAdmin) { localStorage.removeItem("rmrp_forum_admin"); location.reload(); return; }
+    const p = prompt("Введите пароль администратора:");
+    if (!p) return;
+    try {
+        const res = await fetch(`${SB_URL}/rest/v1/rpc/verify_forum_admin`, {
+            method: "POST", headers, body: JSON.stringify({ pass: p })
+        });
+        const isOk = await res.json();
+        if (isOk === true) { localStorage.setItem("rmrp_forum_admin", "1"); location.reload(); }
+        else alert("Неверный пароль!");
+    } catch (e) { alert("Ошибка проверки пароля."); }
+};
+
+window.filterCategory = function(cat, btnEl) {
+    currentCat = cat;
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    if (btnEl) btnEl.classList.add("active");
+    loadThreads();
+};
+
+window.showNewThreadForm = function() {
+    document.getElementById("thread-view").style.display = "none";
+    document.getElementById("new-thread-box").style.display = "block";
+};
+
+async function loadThreads() {
+    document.getElementById("thread-view").style.display = "none";
+    document.getElementById("cat-tabs").style.display = "flex";
+    const list = document.getElementById("threads-list");
+    list.style.display = "block";
+    try {
+        let url = `${SB_URL}/rest/v1/forum_threads?order=created_at.desc`;
+        if (currentCat !== "Все") url += `&category=eq.${encodeURIComponent(currentCat)}`;
+        const res = await fetch(url, { headers });
+        const data = await res.json();
+        if (!Array.isArray(data) || !data.length) {
+            list.innerHTML = '<div class="card" style="text-align:center; color:#64748b;">Тем пока нет. Создайте первую!</div>';
+            return;
+        }
+        list.innerHTML = data.map(t => `
+            <div class="card thread-item" onclick="openThread(${t.id})">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
+                    <div><span class="badge badge-cat">${t.category || 'Общее'}</span><b style="font-size:15.5px; color:#f8fafc;">${t.title}</b></div>
+                    <span class="badge ${t.status === 'Закрыто' ? 'badge-closed' : 'badge-open'}">${t.status}</span>
+                </div>
+                <div style="font-size:12px; color:#64748b;">Автор: ${t.author} • ${new Date(t.created_at).toLocaleString("ru-RU")}</div>
+            </div>
+        `).join("");
+    } catch (e) {
+        list.innerHTML = '<div class="card" style="text-align:center; color:#f87171;">Ошибка загрузки тем. Проверьте таблицы в Supabase.</div>';
+    }
+}
+window.createThread = async function() {
+    const category = document.getElementById("t-category").value;
+    const author = document.getElementById("t-author").value.trim() || "Аноним";
+    const title = document.getElementById("t-title").value.trim();
+    const content = document.getElementById("t-content").value.trim();
+    const image_url = document.getElementById("t-img").value.trim() || null;
+    if (!title || !content) return alert("Заполните заголовок и текст!");
+    await fetch(`${SB_URL}/rest/v1/forum_threads`, {
+        method: "POST", headers, body: JSON.stringify({ category, author, title, content, image_url })
+    });
+    document.getElementById("new-thread-box").style.display = "none";
+    document.getElementById("t-title").value = "";
+    document.getElementById("t-content").value = "";
+    document.getElementById("t-img").value = "";
+    loadThreads();
+};
+
+window.openThread = async function(id) {
+    document.getElementById("threads-list").style.display = "none";
+    document.getElementById("cat-tabs").style.display = "none";
+    const view = document.getElementById("thread-view");
+    view.style.display = "block";
+    view.innerHTML = "Загрузка...";
+    const [tRes, pRes] = await Promise.all([
+        fetch(`${SB_URL}/rest/v1/forum_threads?id=eq.${id}`, { headers }),
+        fetch(`${SB_URL}/rest/v1/forum_posts?thread_id=eq.${id}&order=created_at.asc`, { headers })
+    ]);
+    const thread = (await tRes.json());
+    const posts = await pRes.json();
+    const adminControls = isAdmin ? `
+        <button class="btn btn-dark" onclick="toggleThreadStatus(${thread.id}, '${thread.status === 'Открыто' ? 'Закрыто' : 'Открыто'}')">${thread.status === 'Открыто' ? '🔒 Закрыть' : '🔓 Открыть'}</button>
+        <button class="btn btn-red" onclick="deleteThread(${thread.id})">🗑 Удалить</button>
+    ` : "";
+    const replyBox = (thread.status === 'Открыто' || isAdmin) ? `
+        <div class="card" style="margin-top:16px;">
+            <h4 style="margin-bottom:10px;">Ответить в теме ${isAdmin ? '<span class="badge badge-admin">ОТ ИМЕНИ АДМИНА</span>' : ''}</h4>
+            <input type="text" id="r-author" placeholder="Ваш ник" value="${isAdmin ? 'Администратор' : ''}">
+            <textarea id="r-content" rows="3" placeholder="Текст ответа..."></textarea>
+            <input type="text" id="r-img" placeholder="Ссылка на скриншот (необязательно)">
+            <button class="btn" onclick="sendReply(${thread.id})">Отправить ответ</button>
+        </div>
+    ` : '<div class="card" style="text-align:center; color:#f87171;">Тема закрыта администрацией.</div>';
+
+    view.innerHTML = `
+        <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+            <button class="btn btn-dark" onclick="loadThreads()">← Назад к темам</button>
+            <div style="display:flex; gap:8px;">${adminControls}</div>
+        </div>
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div><span class="badge badge-cat">${thread.category || 'Общее'}</span> <h3 style="display:inline;">${thread.title}</h3></div>
+                <span class="badge ${thread.status === 'Закрыто' ? 'badge-closed' : 'badge-open'}">${thread.status}</span>
+            </div>
+            <div style="font-size:12px; color:#64748b; margin-bottom:12px;">Автор: ${thread.author} • ${new Date(thread.created_at).toLocaleString("ru-RU")}</div>
+            <div style="line-height:1.5; white-space:pre-wrap;">${thread.content}</div>
+            ${thread.image_url ? `<img src="${thread.image_url}" class="attached-img" onclick="window.open(this.src)">` : ''}
+        </div>
+        ${posts.map(p => `
+            <div class="card post ${p.role === 'Админ' ? 'post-admin' : ''}">
+                <div style="font-size:12px; margin-bottom:6px;">
+                    <b>${p.author}</b> ${p.role === 'Админ' ? '<span class="badge badge-admin">АДМИН</span>' : ''}
+                    <span style="color:#64748b;">• ${new Date(p.created_at).toLocaleString("ru-RU")}</span>
+                </div>
+                <div style="line-height:1.5; white-space:pre-wrap;">${p.content}</div>
+                ${p.image_url ? `<img src="${p.image_url}" class="attached-img" onclick="window.open(this.src)">` : ''}
+            </div>
+        `).join("")}
+        ${replyBox}
+    `;
+};
+
+window.sendReply = async function(threadId) {
+    const author = document.getElementById("r-author").value.trim() || (isAdmin ? "Администратор" : "Игрок");
+    const content = document.getElementById("r-content").value.trim();
+    const image_url = document.getElementById("r-img").value.trim() || null;
+    if (!content) return alert("Введите текст ответа!");
+    const role = isAdmin ? "Админ" : "Игрок";
+    await fetch(`${SB_URL}/rest/v1/forum_posts`, {
+        method: "POST", headers, body: JSON.stringify({ thread_id: threadId, author, role, content, image_url })
+    });
+    openThread(threadId);
+};
+
+window.toggleThreadStatus = async function(id, status) {
+    await fetch(`${SB_URL}/rest/v1/forum_threads?id=eq.${id}`, { method: "PATCH", headers, body: JSON.stringify({ status }) });
+    openThread(threadId);
+};
+
+window.deleteThread = async function(id) {
+    if (!confirm("Удалить тему?")) return;
+    await fetch(`${SB_URL}/rest/v1/forum_threads?id=eq.${id}`, { method: "DELETE", headers });
+    loadThreads();
+};
+
+loadThreads();
 </script>
+</body>
+</html>
+
 </body>
 </html>
