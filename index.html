@@ -72,19 +72,32 @@ input, textarea, select { width: 100%; background: #0b0f14; border: 1px solid #3
 <script>
 const SB_URL = new URL("https://" + "unejwdoylcvtwyhjnltp" + ".supabase.co").origin;
 const SB_KEY = "sb_publishable_zxEzT7COe0uFc-WNIY0Qxg_Fmi5x-tO";
-const ADMIN_PASS = "Matvei2013";
 const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" };
 
 let isAdmin = localStorage.getItem("rmrp_forum_admin") === "1";
 let currentCat = "Все";
 if (isAdmin) document.getElementById("role-status").innerHTML = 'Режим: <b style="color:#f87171;">Администратор</b>';
 
-window.adminLogin = function() {
+wwindow.adminLogin = async function() {
     if (isAdmin) { localStorage.removeItem("rmrp_forum_admin"); location.reload(); return; }
     const p = prompt("Введите пароль администратора:");
-    if (p === ADMIN_PASS) { localStorage.setItem("rmrp_forum_admin", "1"); location.reload(); }
-    else if (p) alert("Неверный пароль!");
+    if (!p) return;
+
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/verify_forum_admin`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ pass: p })
+    });
+    const isOk = await res.json();
+
+    if (isOk === true) {
+        localStorage.setItem("rmrp_forum_admin", "1");
+        location.reload();
+    } else {
+        alert("Неверный пароль!");
+    }
 };
+
 
 window.filterCategory = function(cat, btnEl) {
     currentCat = cat;
