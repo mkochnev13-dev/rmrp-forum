@@ -731,12 +731,8 @@ function deleteThread(id) {
     if (!confirm("Удалить тему?")) return;
     fetch(SB_URL + "/rest/v1/forum_threads?id=eq." + id, { method: "DELETE", headers: headers }).then(function() { loadThreads(); });
 }
-
 loadThreads();
 </script>
 </body>
 </html>
 
-
-</body>
-</html>
