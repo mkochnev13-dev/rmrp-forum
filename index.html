@@ -599,6 +599,140 @@ window.deleteThread = async function(id) {
 };
 
 loadThreads();
+<script>
+var SB_URL = "https://supabase.co";
+var SB_KEY = "sb_publishable_zxEzT7COe0uFc-WNIY0Qxg_Fmi5x-tO";
+var headers = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" };
+var isAdmin = localStorage.getItem("rmrp_forum_admin") === "1";
+var currentCat = "Все";
+
+if (isAdmin) document.getElementById("role-status").innerHTML = 'Режим: <b style="color:#f87171;">Администратор</b>';
+
+function adminLogin() {
+    if (isAdmin) { localStorage.removeItem("rmrp_forum_admin"); location.reload(); return; }
+    var p = prompt("Введите пароль администратора:");
+    if (!p) return;
+    fetch(SB_URL + "/rest/v1/rpc/verify_forum_admin", { method: "POST", headers: headers, body: JSON.stringify({ pass: p }) })
+        .then(function(r) { return r.json(); })
+        .then(function(ok) {
+            if (ok === true) { localStorage.setItem("rmrp_forum_admin", "1"); location.reload(); }
+            else alert("Неверный пароль!");
+        });
+}
+
+function filterCategory(cat, btnEl) {
+    currentCat = cat;
+    document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+    if (btnEl) btnEl.classList.add("active");
+    loadThreads();
+}
+
+function showNewThreadForm() {
+    document.getElementById("thread-view").style.display = "none";
+    document.getElementById("new-thread-box").style.display = "block";
+}
+
+function loadThreads() {
+    document.getElementById("thread-view").style.display = "none";
+    document.getElementById("cat-tabs").style.display = "flex";
+    var list = document.getElementById("threads-list");
+    list.style.display = "block";
+    var url = SB_URL + "/rest/v1/forum_threads?order=created_at.desc";
+    if (currentCat !== "Все") url += "&category=eq." + encodeURIComponent(currentCat);
+
+    fetch(url, { headers: headers })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                list.innerHTML = '<div class="card" style="text-align:center; color:#64748b;">Тем пока нет. Нажмите «+ Новая тема»!</div>';
+                return;
+            }
+            var html = "";
+            for (var i = 0; i < data.length; i++) {
+                var t = data[i];
+                var stClass = t.status === "Закрыто" ? "badge-closed" : "badge-open";
+                html += '<div class="card thread-item" onclick="openThread(' + t.id + ')">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
+                    '<div><span class="badge badge-cat">' + (t.category || 'Общее') + '</span><b style="font-size:15.5px; color:#f8fafc;">' + t.title + '</b></div>' +
+                    '<span class="badge ' + stClass + '">' + t.status + '</span></div>' +
+                    '<div style="font-size:12px; color:#64748b;">Автор: ' + t.author + '</div></div>';
+            }
+            list.innerHTML = html;
+        });
+}
+
+function createThread() {
+    var category = document.getElementById("t-category").value;
+    var author = document.getElementById("t-author").value.trim() || "Аноним";
+    var title = document.getElementById("t-title").value.trim();
+    var content = document.getElementById("t-content").value.trim();
+    var image_url = document.getElementById("t-img").value.trim() || null;
+    if (!title || !content) return alert("Заполните заголовок и текст!");
+
+    fetch(SB_URL + "/rest/v1/forum_threads", {
+        method: "POST", headers: headers,
+        body: JSON.stringify({ category: category, author: author, title: title, content: content, image_url: image_url })
+    }).then(function() {
+        document.getElementById("new-thread-box").style.display = "none";
+        document.getElementById("t-title").value = "";
+        document.getElementById("t-content").value = "";
+        document.getElementById("t-img").value = "";
+        loadThreads();
+    });
+}
+
+function openThread(id) {
+    document.getElementById("threads-list").style.display = "none";
+    document.getElementById("cat-tabs").style.display = "none";
+    var view = document.getElementById("thread-view");
+    view.style.display = "block";
+    view.innerHTML = "Загрузка...";
+
+    Promise.all([
+        fetch(SB_URL + "/rest/v1/forum_threads?id=eq." + id, { headers: headers }).then(function(r) { return r.json(); }),
+        fetch(SB_URL + "/rest/v1/forum_posts?thread_id=eq." + id + "&order=created_at.asc", { headers: headers }).then(function(r) { return r.json(); })
+    ]).then(function(res) {
+        var thread = res[0][0];
+        var posts = res[1] || [];
+        var adminBtns = isAdmin ? '<button class="btn btn-dark" onclick="toggleThreadStatus(' + thread.id + ',\'' + (thread.status === "Открыто" ? "Закрыто" : "Открыто") + '\')">Закрыть/Открыть</button> <button class="btn btn-red" onclick="deleteThread(' + thread.id + ')">Удалить</button>' : '';
+        var html = '<div style="display:flex; justify-content:space-between; margin-bottom:12px;"><button class="btn btn-dark" onclick="loadThreads()">← Назад</button><div>' + adminBtns + '</div></div>';
+        html += '<div class="card"><h3>' + thread.title + '</h3><div style="font-size:12px; color:#64748b; margin:6px 0 12px;">Автор: ' + thread.author + ' • Статус: ' + thread.status + '</div><div style="white-space:pre-wrap;">' + thread.content + '</div>' + (thread.image_url ? '<img src="' + thread.image_url + '" class="attached-img" onclick="window.open(this.src)">' : '') + '</div>';
+
+        for (var i = 0; i < posts.length; i++) {
+            var p = posts[i];
+            var pClass = p.role === "Админ" ? "card post post-admin" : "card post";
+            var badge = p.role === "Админ" ? '<span class="badge badge-admin">АДМИН</span>' : '';
+            html += '<div class="' + pClass + '"><div style="font-size:12px; margin-bottom:6px;"><b>' + p.author + '</b> ' + badge + '</div><div style="white-space:pre-wrap;">' + p.content + '</div>' + (p.image_url ? '<img src="' + p.image_url + '" class="attached-img" onclick="window.open(this.src)">' : '') + '</div>';
+        }
+
+        if (thread.status === "Открыто" || isAdmin) {
+            html += '<div class="card" style="margin-top:16px;"><h4 style="margin-bottom:10px;">Ответить</h4><input type="text" id="r-author" placeholder="Ваш ник" value="' + (isAdmin ? 'Администратор' : '') + '"><textarea id="r-content" rows="3" placeholder="Ответ..."></textarea><input type="text" id="r-img" placeholder="Ссылка на скриншот"><button class="btn" onclick="sendReply(' + thread.id + ')">Отправить</button></div>';
+        }
+        view.innerHTML = html;
+    });
+}
+
+function sendReply(threadId) {
+    var author = document.getElementById("r-author").value.trim() || (isAdmin ? "Администратор" : "Игрок");
+    var content = document.getElementById("r-content").value.trim();
+    var image_url = document.getElementById("r-img").value.trim() || null;
+    if (!content) return alert("Введите ответ!");
+    fetch(SB_URL + "/rest/v1/forum_posts", {
+        method: "POST", headers: headers,
+        body: JSON.stringify({ thread_id: threadId, author: author, role: isAdmin ? "Админ" : "Игрок", content: content, image_url: image_url })
+    }).then(function() { openThread(threadId); });
+}
+
+function toggleThreadStatus(id, status) {
+    fetch(SB_URL + "/rest/v1/forum_threads?id=eq." + id, { method: "PATCH", headers: headers, body: JSON.stringify({ status: status }) }).then(function() { openThread(id); });
+}
+
+function deleteThread(id) {
+    if (!confirm("Удалить тему?")) return;
+    fetch(SB_URL + "/rest/v1/forum_threads?id=eq." + id, { method: "DELETE", headers: headers }).then(function() { loadThreads(); });
+}
+
+loadThreads();
 </script>
 </body>
 </html>
