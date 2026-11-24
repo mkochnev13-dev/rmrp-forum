@@ -70,7 +70,7 @@ input, textarea, select { width: 100%; background: #0b0f14; border: 1px solid #3
     <div id="thread-view" style="display:none;"></div>
 </div>
 <script>
-var SB_URL = "https://" + "unejwdoylcvtwyhjnltp" + ".supabase.co";
+var SB_URL = new URL("https://" + "unejwdoylcv" + "twyhjnltp.supabase.co").origin;
 var SB_KEY = "sb_publishable_zxEzT7COe0uFc-WNIY0Qxg_Fmi5x-tO";
 var headers = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" };
 var isAdmin = localStorage.getItem("rmrp_forum_admin") === "1";
@@ -140,16 +140,21 @@ function createThread() {
     if (!title || !content) return alert("Заполните заголовок и текст!");
 
     fetch(SB_URL + "/rest/v1/forum_threads", {
-        method: "POST", headers: headers,
+        method: "POST",
+        headers: headers,
         body: JSON.stringify({ category: category, author: author, title: title, content: content, image_url: image_url })
-    }).then(function() {
+    }).then(function(r) {
+        if (!r.ok) return r.text().then(function(t) { alert("Ошибка базы: " + t); });
         document.getElementById("new-thread-box").style.display = "none";
         document.getElementById("t-title").value = "";
         document.getElementById("t-content").value = "";
         document.getElementById("t-img").value = "";
         loadThreads();
+    }).catch(function(e) {
+        alert("Ошибка сети: " + e);
     });
 }
+
 
 function openThread(id) {
     document.getElementById("threads-list").style.display = "none";
